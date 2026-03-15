@@ -1,8 +1,8 @@
 ---
-title: "ST5209/X Assignment 3"
+title: "ST5209X Assignment 3"
 format: pdf
 editor: visual
-author: "Due 16 Mar, 11.59pm"
+author: "Yanxin Ruan (A0333643H)"
 ---
 
 ## Set up
@@ -41,30 +41,381 @@ a.  Fit the following exponential smoothing models on the entire time series:
     -   Holt-Winters with multiplicative noise and seasonality,
     -   Holt-Winters with a log transformation, with additive noise and seasonality,
     -   Holt-Winters with multiplicative noise and seasonality, and damping.
+
+```{r} 
+diabetes |> autoplot(TotalC)
+
+dia_fit <- diabetes |>
+  model(
+    Mult = ETS(TotalC ~ error("M") + trend("A") + season("M")),
+    LogAdditive = ETS(log(TotalC) ~ error("A") + trend("A") + season("A")),
+    MultDamp = ETS(TotalC ~ error("M") + trend("Ad") + season("M"))
+  )
+
+dia_fit
+```
+
+
 b.  Make ACF plots for the innovation residuals of these three models. Does this suggest that the residuals are drawn from a white noise model?
+
+**ACF of Innovation Residuals: Holt-Winters (Multiplicative Error, Multiplicative Seasonality)**
+```{r}
+gg_tsresiduals(select(dia_fit, Mult))
+```
+
+**ACF of Innovation Residuals: Log-Transformed Holt-Winters (Additive Error, Additive Seasonality)**
+```{r}
+gg_tsresiduals(select(dia_fit, LogAdditive))
+```
+
+**ACF of Innovation Residuals: Holt-Winters with Damped Trend (Multiplicative Error, Multiplicative Seasonality)**
+```{r}
+gg_tsresiduals(select(dia_fit, MultDamp))
+```
+The residual series fluctuate around zero with no obvious trend, but the ACF plots show several spikes outside the significance bounds for the three models.
+
+Therefore, the residuals do not appear to be white noise. This indicates that some autocorrelation structure remains in the residuals and the models do not fully capture the dynamics of the time series.
+
+
+
 c.  Calculate the p-value from a Ljung-Box test on the residuals with lag $h=8$. Does this suggest that the residuals are drawn from a white noise model? What does this mean about the fitted model?
+
+```{r}
+lb_result <- dia_fit |>
+  augment() |>
+  features(.innov, ljung_box, lag = 8)
+
+lb_result
+```
+At the 5% level, all three p-values (0.0424, 0.0420, 0.0141) are below 0.05, so we reject the null hypothesis that the residuals are white noise. This means that some serial dependence remains in the residuals, so none of the fitted models fully captures the structure in the series.
+
+
 d.  Perform time series cross-validation for the three methods, using `.init = 50` and `.step = 10`, and with the forecast horizon $h=4$. Which method has the best RMSSE? How many data points is the error averaged over in total?
+
+From the cross-validation results, the RMSSE values are:
+```{r}
+dia_cv <- diabetes |>
+  stretch_tsibble(.init = 50, .step = 10) |>
+  model(
+    Mult = ETS(TotalC ~ error("M") + trend("A") + season("M")),
+    LogAdditive = ETS(log(TotalC) ~ error("A") + trend("A") + season("A")),
+    MultDamp = ETS(TotalC ~ error("M") + trend("Ad") + season("M"))
+  )
+
+dia_fc <- dia_cv |>
+  forecast(h = 4)
+
+cv_acc <- dia_fc |>
+  accuracy(diabetes) |>
+  select(.model, RMSSE) |>
+  arrange(RMSSE)
+
+cv_acc
+```
+Therefore, the LogAdditive model has the smallest RMSSE and performs best under time series cross-validation.
+
+The dataset contains n = 204 observations. With .init = 50 and .step = 10, the number of forecast origins is
+
+n_origins = ceil((204 − 50) / 10) = 16.
+
+Since the forecast horizon is h = 4, the total number of forecast errors used to compute the RMSSE is
+
+16 × 4 = 64.
+```{r}
+n <- nrow(diabetes)
+init <- 50
+step <- 10
+h <- 4
+
+n_origins <- ceiling((n - init) / step)
+total_points <- n_origins * h
+
+tibble(
+  n = n,
+  n_origins = n_origins,
+  h = h,
+  total_points = total_points
+)
+```
+Thus, the forecast error is averaged over 64 forecast points in total.
+
+
+
 
 ## 2. ETS parameters, prediction intervals
 
 The dataset `hh_budget` contains annual indicators of household budgets for a few countries.
 
 a.  Fit `ETS` on the time series comprising savings as a portion of household budgets in Canada. Do not specify what type of ETS model to fit, instead allowing the function to perform automatic model selection.
+
+```{r}
+canada_sav <- hh_budget |>
+  filter(Country == "Canada") |>
+  select(Savings)
+
+canada_fit <- canada_sav |>
+  model(ETS = ETS(Savings))
+
+report(canada_fit)
+```
+
+
 b.  Which ETS model was selected?
+
+```{r}
+rep_txt <- capture.output(report(canada_fit))
+model_line <- rep_txt[grepl("^Model:", rep_txt)]
+model_name <- sub("^Model:\\s*", "", model_line)
+
+model_name
+```
+Thus the ETS model selected automatically is ETS(A,N,N).
+
+
 c.  What are the fitted parameters of the model?
+
+```{r}
+param_tbl <- tidy(canada_fit)
+param_tbl
+```
+
+The fitted parameters are $\text{alpha} = 1.00$ and the initial level $l[0] = 9.31$. 
+
+
 d.  Based on the fitted parameters, what simple forecasting method is this similar to?
+
+This model is most similar to the naive method. Since alpha is close to 1, the fitted level closely tracks the most recent observation. 
+
+
 e.  Based on your answer to d), how does the width of the prediction interval change as a function of the forecast horizon $h$? Make a plot to verify this.
+
+For a model behaving like the naive method, the forecast error variance increases linearly with the forecast horizon h. Since prediction intervals depend on the standard deviation of the forecast error, the width of the prediction interval grows proportionally to $\sqrt h$.
+
+The following forecast plot shows that the prediction intervals widen as the forecast horizon increases.
+```{r}
+canada_fit |>
+  forecast(h = 10) |>
+  autoplot(canada_sav, level = c(80, 95)) +
+  labs(
+    title = "Forecast of Canadian Household Savings",
+    y = "Savings (% of budget)",
+    x = "Year"
+  )
+```
+
+To further verify this relationship, we plot the width of the 95% prediction interval against $\sqrt h$.
+```{r}
+canada_fc <- canada_fit |>
+  forecast(h = 20)
+
+pi_width <- canada_fc |>
+  hilo(level = 95) |>
+  unpack_hilo(`95%`) |>
+  mutate(
+    h = row_number(),
+    sqrt_h = sqrt(h),
+    width = `95%_upper` - `95%_lower`
+  )
+
+pi_width |>
+  ggplot(aes(x = sqrt_h, y = width)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    x = expression(sqrt(h)),
+    y = "95% prediction interval width",
+    title = "Prediction interval width versus sqrt(h)"
+  )
+```
+The approximately linear relationship between the prediction interval width and $\sqrt h$ confirms that the width grows proportionally to $\sqrt h$, which is consistent with the theoretical behaviour of the naive forecasting method.
+
+
+
+
 
 ## 3. Moving averages and differences
 
 Consider the linear trend model $$
 X_t = \beta_0 + \beta_1 t + W_t.
-$$ Define a time series $(Y_t)$ by taking a moving average of $(X_t)$ with a symmetric window of size 7. Define another times series $(Z_t)$ by taking a difference of $(X_t)$.
+$$ Define a time series $Y_t$ by taking a moving average of $X_t$ with a symmetric window of size 7. Define another times series $Z_t$ by taking a difference of $X_t$.
 
-a.  What is the mean function for $(Y_t)$? What is the ACVF for $(Y_t)$?
-b.  What is the mean function for $(Z_t)$? What is its ACVF?
-c.  What is the CCF of $(Y_t)$ and $(Z_t)$?
-d.  Are $(Y_t)$ and $(Z_t)$ jointly stationary?
+a.  What is the mean function for $Y_t$? What is the ACVF for $Y_t$?
+
+The moving average with symmetric window size 7 is
+$$
+Y_t = \frac{1}{7}\sum_{i=t-3}^{t+3} X_i .
+$$
+
+Substitute the model
+$$
+X_i = \beta_0 + \beta_1 i + W_i
+$$
+
+$$
+\begin{aligned}
+Y_t
+&= \frac{1}{7}\sum_{i=t-3}^{t+3}(\beta_0 + \beta_1 i + W_i) \\
+&= \beta_0 + \beta_1 t + \frac{1}{7}\sum_{i=t-3}^{t+3} W_i .
+\end{aligned}
+$$
+
+Hence the mean function is
+$$
+\begin{aligned}
+E(Y_t)
+&= \beta_0 + \beta_1 t + \frac{1}{7}\sum_{i=t-3}^{t+3}E(W_i) \\
+&= \beta_0 + \beta_1 t .
+\end{aligned}
+$$
+
+The ACVF is
+$$
+\begin{aligned}
+\gamma_Y(h) &= \text{Cov}(Y_t,Y_{t+h}) \\
+&= \text{Cov}\!\left(\frac{1}{7}\sum_{i=t-3}^{t+3}W_i,\,
+\frac{1}{7}\sum_{j=t+h-3}^{t+h+3}W_j\right)\\
+&= \frac{1}{49}\sum_{i=t-3}^{t+3}\sum_{j=t+h-3}^{t+h+3}\text{Cov}(W_i,W_j).
+\end{aligned} 
+$$
+
+Since $W_t$ is white noise,
+$$
+\text{Cov}(W_i,W_j)=
+\begin{cases}
+\sigma^2,& i=j\\
+0,& i\neq j
+\end{cases}
+$$
+
+Therefore only overlapping indices contribute, giving
+
+$$
+\gamma_Y(h)=
+\begin{cases}
+\dfrac{7-|h|}{49}\sigma^2,& |h|<7\\
+0,& \text{otherwise} .
+\end{cases}
+$$
+
+
+b.  What is the mean function for $Z_t$? What is its ACVF?
+
+The differenced series is
+$$
+Z_t = X_t - X_{t-1}.
+$$
+
+Substitute the model
+$$
+\begin{aligned}
+Z_t &= (\beta_0 + \beta_1 t + W_t) - (\beta_0 + \beta_1(t-1) + W_{t-1}) \\
+&= \beta_1 + W_t - W_{t-1}.
+\end{aligned}
+$$
+
+Hence the mean function is
+$$
+\begin{aligned}
+E(Z_t)
+&= \beta_1 + E(W_t) - E(W_{t-1}) \\
+&= \beta_1 .
+\end{aligned}
+$$
+
+The ACVF is
+$$
+\begin{aligned}
+\gamma_Z(h) &= \text{Cov}(Z_t,Z_{t+h}) \\
+&= \text{Cov}(W_t - W_{t-1},\, W_{t+h} - W_{t+h-1}).
+\end{aligned}
+$$
+
+Using white noise properties,
+$$
+\gamma_Z(h)=
+\begin{cases}
+2\sigma^2,& h=0\\
+-\sigma^2,& |h|=1\\
+0,& \text{otherwise}.
+\end{cases}
+$$
+
+
+c.  What is the CCF of $Y_t$ and $Z_t$?
+
+First compute the cross–covariance
+$$
+\gamma_{YZ}(h)=\text{Cov}(Y_{t+h},Z_t).
+$$
+
+Substitute the definitions
+$$
+\gamma_{YZ}(h)
+=
+\text{Cov}\!\left(
+\frac{1}{7}\sum_{i=t+h-3}^{t+h+3}W_i,
+\, W_t-W_{t-1}
+\right).
+$$
+
+Only overlapping terms contribute.
+
+If $h = 3$
+$$
+\gamma_{YZ}(3)=\frac{\sigma^2}{7}.
+$$
+
+If $h = -4$
+$$
+\gamma_{YZ}(-4)=-\frac{\sigma^2}{7}.
+$$
+
+Otherwise
+$$
+\gamma_{YZ}(h)=0.
+$$
+
+The cross–correlation function is
+$$
+\rho_{YZ}(h)
+=
+\frac{\gamma_{YZ}(h)}
+{\sqrt{\gamma_Y(0)\gamma_Z(0)}}.
+$$
+
+Since
+$$
+\gamma_Y(0)=\frac{\sigma^2}{7}, \qquad
+\gamma_Z(0)=2\sigma^2,
+$$
+
+we obtain
+$$
+\rho_{YZ}(h)=
+\begin{cases}
+\dfrac{1}{\sqrt{14}},& h=3\\
+-\dfrac{1}{\sqrt{14}},& h=-4\\
+0,& \text{otherwise}.
+\end{cases}
+$$
+
+
+d.  Are $Y_t$ and $Z_t$ jointly stationary?
+
+$Y_t$ has mean
+$$
+E(Y_t)=\beta_0+\beta_1 t
+$$
+which depends on $t$.
+
+However $Z_t$ has constant mean
+$$
+E(Z_t)=\beta_1 .
+$$
+Since the means are not constant jointly over time, the pair $(Y_t,Z_t)$ is **not jointly stationary**.
+
+
+
 
 ## 4. Sample vs population ACF
 
