@@ -3,6 +3,8 @@ title: "ST5209X Assignment 3"
 format: pdf
 editor: visual
 author: "Yanxin Ruan (A0333643H)"
+execute:
+  warning: false
 ---
 
 ## Set up
@@ -419,14 +421,92 @@ Since the means are not constant jointly over time, the pair $(Y_t,Z_t)$ is **no
 
 ## 4. Sample vs population ACF
 
-Consider the signal plus noise model $$
+Consider the signal plus noise model 
+$$
 X_t = \sin(2\pi t/5) + W_t.
 $$
 
-a.  What is the ACF of $(X_t)$?
+a.  What is the ACF of $X_t$?
+
+For
+$$
+X_t=\sin(2\pi t/5)+W_t,
+$$
+the mean function is
+$$
+\mu_t=E(X_t)=\sin(2\pi t/5).
+$$
+
+Hence
+$$
+X_t-\mu_t=W_t.
+$$
+
+So the autocovariance function is
+$$
+\gamma(h)=\operatorname{Cov}(X_t,X_{t+h})
+=\operatorname{Cov}(W_t,W_{t+h})
+=
+\begin{cases}
+\sigma^2, & h=0,\\
+0, & h\neq 0.
+\end{cases}
+$$
+
+Therefore the ACF is
+$$
+\rho(h)=\frac{\gamma(h)}{\gamma(0)}
+=
+\begin{cases}
+1, & h=0,\\
+0, & h\neq 0.
+\end{cases}
+$$
+
+
 b.  Simulate a time series $X_1,X_2,\ldots,X_{200}$ from this model and plot its sample ACF.
+
+```{r}
+set.seed(5209)
+
+n <- 200
+sigma <- 1
+
+x_ts <- tibble(
+  t = 1:n,
+  x = sin(2 * pi * t / 5) + rnorm(n, mean = 0, sd = sigma)
+) |>
+  as_tsibble(index = t)
+
+x_ts |>
+  ACF(x) |>
+  autoplot()
+```
+
+
 c.  Why does the sample ACF not look like the population ACF function?
+
+The sample ACF does not look like the population ACF because the sample ACF is computed from the observed series itself, and the deterministic signal
+$$
+\sin(2πt/5)
+$$
+remains in the data.
+
+Although the population ACF is based only on the white noise part after removing the mean function, the sample ACF is affected by the visible periodic pattern in the finite sample. Since the sine term has period 5, the sample ACF tends to show a repeating pattern with peaks near multiples of 5.
+
+
 d.  Why does the asymptotic normality theorem for the ACF not apply?
+
+The asymptotic normality theorem for the sample ACF does not apply because it requires the process to be stationary.
+
+Here,
+$$
+E(X_t) = \sin(2πt/5),
+$$
+which depends on t. Hence $X_t$ is not stationary, so the usual asymptotic normality result for the sample ACF is not valid.
+
+
+
 
 ## 5. Gaussian processes
 
