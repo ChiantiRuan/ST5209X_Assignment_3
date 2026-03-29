@@ -1,8 +1,10 @@
 ---
-title: "ST5209/X Assignment 4"
+title: "ST5209X Assignment 4"
 format: pdf
 editor: visual
-author: "Due 30 Mar, 11.59pm"
+author: "Yanxin Ruan (A0333643H)"
+execute:
+  warning: false
 ---
 
 ## Set up
@@ -20,23 +22,245 @@ author: "Due 30 Mar, 11.59pm"
 #| echo: FALSE
 library(tidyverse)
 library(fpp3)
+library(tsibble)
+library(fable)
+library(feasts)
+library(dplyr)
+library(tidyr)
+library(broom)
 ```
 
 ## 1. AR polynomial
 
-Consider the AR(2) model $$
+Consider the AR(2) model 
+$$
 X_t = 4 + 0.5 X_{t-1} - 0.25 X_{t-2} + W_t.
 $$ {#eq-ar2}
 
 a.  What is the autoregressive polynomial?
 
+Since the standard AR(2) form is
+$$
+X_t = c + \phi_1 X_{t-1} + \phi_2 X_{t-2} + W_t.
+$$
+
+By direct comparison,
+$$
+\phi_1 = 0.5, \qquad \phi_2 = -0.25.
+$$
+
+For an AR(2) model, the autoregressive polynomial is defined by
+$$
+\phi(z) = 1 - \phi_1 z - \phi_2 z^2.
+$$
+
+Substitute the values of $\phi_1$ and $\phi_2$:
+$$
+\phi(z) = 1 - 0.5z - (-0.25)z^2.
+$$
+
+Now simplify the sign:
+$$
+\phi(z) = 1 - 0.5z + 0.25z^2.
+$$
+
+Therefore, the autoregressive polynomial is
+$$
+\phi(z) = 1 - 0.5z + 0.25z^2.
+$$
+
+
 b.  What are its roots?
 
+We solve
+$$
+\begin{aligned}
+\phi(z) = 1 - 0.5z + 0.25z^2 &= 0. \\
+z^2 - 2z + 4 &= 0.
+\end{aligned}
+$$
+
+By applying the quadratic formula, we get
+$$
+z = \frac{-(-2) \pm \sqrt{(-2)^2 - 4\times 1 \times 4}}{2 \times 1}.
+$$
+
+Therefore, the two roots are
+$$
+z_1 = 1 + \sqrt{3}\,i, \qquad z_2 = 1 - \sqrt{3}\,i.
+$$
+
+
 c.  Is this model causal? Why?
+
+An AR model is causal if all roots of the autoregressive polynomial satisfy
+$$
+|z| > 1.
+$$
+
+We compute the modulus of each root as follows.
+
+For $z_1$,
+$$
+|z_1| = |1 + \sqrt{3}\,i|
+= \sqrt{1^2 + (\sqrt{3})^2}
+= 2 > 1.
+$$
+
+Similarly, for $z_2$,
+$$
+|z_2| = |1 - \sqrt{3}\,i| = \sqrt{1^2 + (-\sqrt{3})^2}
+= 2 > 1.
+$$
+
+Thus, both roots lie outside the unit circle. Therefore, the model is **causal**.
+
 
 d.  Given the representation $$
     X_t = \mu + \sum_{j=0}^\infty \psi_j W_{t-j},
     $$ solve for $\psi_0, \psi_1, \psi_2, \psi_3$. *Hint: Follow the strategy discussed in `linear_process_coefs.qmd`.*
+
+Take expectation on both sides of the equation of $X_t$. Since $E(W_t)=0$, and for a stationary causal process
+$$
+E(X_t) = E(X_{t-1}) = E(X_{t-2}) = \mu,
+$$
+we get
+$$
+\begin{aligned}
+\mu &= 4 + 0.5\mu - 0.25\mu + 0 \\
+0.75\mu &= 4 \\
+\mu &= \frac{16}{3}
+\end{aligned}
+$$
+
+For a causal AR process,
+$$
+X_t - \mu = \sum_{j=0}^{\infty} \psi_j W_{t-j},
+$$
+where the coefficients satisfy
+$$
+\phi(z)\left(\sum_{j=0}^{\infty} \psi_j z^j\right) = 1.
+$$
+
+By substituting $\phi(z)$ we derived in part (a), we get
+$$
+(1 - 0.5z + 0.25z^2)\left(\sum_{j=0}^{\infty} \psi_j z^j\right) = 1.
+$$
+
+Now expand the product carefully:
+$$
+\left(1 - 0.5z + 0.25z^2\right)\left(\psi_0 + \psi_1 z + \psi_2 z^2 + \psi_3 z^3 + \cdots\right) = 1.
+$$
+
+Distribute each term:
+
+From $1$,
+$$
+1 \cdot (\psi_0 + \psi_1 z + \psi_2 z^2 + \psi_3 z^3 + \cdots)
+= \psi_0 + \psi_1 z + \psi_2 z^2 + \psi_3 z^3 + \cdots
+$$
+
+From $-0.5z$,
+$$
+-0.5z \cdot (\psi_0 + \psi_1 z + \psi_2 z^2 + \psi_3 z^3 + \cdots)
+= -0.5\psi_0 z - 0.5\psi_1 z^2 - 0.5\psi_2 z^3 - 0.5\psi_3 z^4 - \cdots
+$$
+
+From $0.25z^2$,
+$$
+0.25z^2 \cdot (\psi_0 + \psi_1 z + \psi_2 z^2 + \psi_3 z^3 + \cdots)
+= 0.25\psi_0 z^2 + 0.25\psi_1 z^3 + 0.25\psi_2 z^4 + 0.25\psi_3 z^5 + \cdots
+$$
+
+Now collect coefficients of equal powers of $z$.
+
+$$
+\begin{aligned}
+&\text{The constant term is } &\quad &\psi_0 \\
+&\text{The coefficient of }z \text{ is } &\quad &\psi_1 - 0.5\psi_0 \\
+&\text{The coefficient of }z^2 \text{ is } &\quad &\psi_2 - 0.5\psi_1 + 0.25\psi_0 \\
+&\text{The coefficient of }z^3 \text{ is } &\quad &\psi_3 - 0.5\psi_2 + 0.25\psi_1
+\end{aligned}
+$$
+
+Therefore,
+$$
+(1 - 0.5z + 0.25z^2)\sum_{j=0}^{\infty}\psi_j z^j
+=
+\psi_0
++ (\psi_1 - 0.5\psi_0)z
++ (\psi_2 - 0.5\psi_1 + 0.25\psi_0)z^2
++ (\psi_3 - 0.5\psi_2 + 0.25\psi_1)z^3
++ \cdots
+$$
+
+But this product must equal $1$, and
+$$
+1 = 1 + 0z + 0z^2 + 0z^3 + \cdots
+$$
+
+So the coefficients must match term by term.
+
+- For the constant term:
+$$
+\psi_0 = 1.
+$$
+
+- For the coefficient of $z$:
+$$
+\psi_1 - 0.5\psi_0 = 0.
+$$
+
+Substitute $\psi_0=1$:
+$$
+\begin{aligned}
+\psi_1 - 0.5(1) &= 0 \\
+\psi_1 &= 0.5
+\end{aligned}
+$$
+
+- For the coefficient of $z^2$:
+$$
+\psi_2 - 0.5\psi_1 + 0.25\psi_0 = 0.
+$$
+
+Substitute $\psi_1=0.5$ and $\psi_0=1$:
+$$
+\begin{aligned}
+\psi_2 - 0.5(0.5) + 0.25(1) &= 0 \\
+\psi_2 &= 0
+\end{aligned}
+$$
+
+- For the coefficient of $z^3$:
+$$
+\psi_3 - 0.5\psi_2 + 0.25\psi_1 = 0.
+$$
+
+Substitute $\psi_2=0$ and $\psi_1=0.5$:
+$$
+\begin{aligned}
+\psi_3 - 0.5(0) + 0.25(0.5) &= 0 \\
+\psi_3 &= -0.125 = -\frac{1}{8}
+\end{aligned}
+$$
+
+Therefore,
+$$
+\mu = \frac{16}{3},
+$$
+and the first four coefficients are
+$$
+\psi_0 = 1, \qquad
+\psi_1 = 0.5, \qquad
+\psi_2 = 0, \qquad
+\psi_3 = -\frac{1}{8}.
+$$
+
+
+
+
+
 
 ## 2. Likelihood
 
@@ -46,19 +270,170 @@ $$ where $W_t \sim WN(0, 0.25)$ is Gaussian white noise. We are given observatio
 
 a.  What is the mean of $X_t$?
 
+Let
+$$
+\mu = E(X_t).
+$$
+
+Taking expectation on both sides and using $E(W_t)=0$ gives
+$$
+\mu = 1 - 0.6\mu.
+$$
+
+Therefore, the mean of $X_t$ is
+$$
+\mu = 0.625.
+$$
+
+
 b.  Write the conditional likelihood of this model, when conditioning on the value of $x_1$.
+
+Conditioning on $x_1$, the conditional likelihood is built from the conditional densities
+$$
+f(x_2,x_3\mid x_1)=f(x_2\mid x_1)f(x_3\mid x_2).
+$$
+
+From the model,
+$$
+X_t \mid X_{t-1}=x_{t-1} \sim N(1-0.6x_{t-1},\,0.25).
+$$
+
+Therefore,
+$$
+X_2 \mid X_1=x_1 \sim N(1-0.6x_1,\,0.25),
+\qquad
+X_3 \mid X_2=x_2 \sim N(1-0.6x_2,\,0.25).
+$$
+
+So the conditional likelihood is
+$$
+L_c
+= f(x_2\mid x_1)f(x_3\mid x_2)
+= \prod_{t=2}^3 \frac{1}{\sqrt{2\pi(0.25)}}
+\exp\!\left(
+-\frac{(x_t-(1-0.6x_{t-1}))^2}{2(0.25)}
+\right).
+$$
+
+Substituting $x_1=0.2$, $x_2=-0.3$, $x_3=0.4$,
+$$
+\begin{aligned}
+L_c
+&=
+\frac{1}{\sqrt{2\pi(0.25)}}\exp\!\left(
+-\frac{(-0.3-(1-0.6\cdot 0.2))^2}{2(0.25)}
+\right)
+\cdot
+\frac{1}{\sqrt{2\pi(0.25)}}\exp\!\left(
+-\frac{(0.4-(1-0.6(-0.3)))^2}{2(0.25)}
+\right) \\
+&=
+\frac{1}{2\pi(0.25)}
+\exp\!\left(
+-\frac{1}{2(0.25)}
+\left[
+(-0.3-0.88)^2 + (0.4-1.18)^2
+\right]
+\right) \\
+&\approx 0.0116 \quad \text{ (to 4 d.p.)}
+\end{aligned}
+$$
+
+
+
+
+
+
 
 ## 3. Reversibility
 
 a.  Using `set.seed(5209)` to fix a random seed, create a sample trajectory of length $n = 500$ from the AR(2) model from Problem 1 using `arima.sim()`.
 
+Simulate from the AR(2) model
+$$
+X_t = 4 + 0.5X_{t-1} - 0.25X_{t-2} + W_t.
+$$
+
+In `arima.sim()`, the argument `mean = 4` directly incorporates the intercept, so no manual centering is needed. The coefficients are specified as
+$$
+\phi_1 = 0.5, \qquad \phi_2 = -0.25.
+$$
+```{r}
+set.seed(5209)
+
+ar2 <- arima.sim(
+  model = list(ar = c(0.5, -0.25)),
+  n = 500,
+  mean = 4
+)
+
+ar2_df <- tibble(
+  time = 1:500,
+  value = as.numeric(ar2)
+)
+
+ggplot(ar2_df, aes(x = time, y = value)) +
+  geom_line() +
+  labs(x = "time", y = "value")
+```
+
+
 b.  Reverse the time index of the vector you obtain using `rev()`.
+
+Reverse the time index using `rev()`. This produces a series that runs backward in time.
+```{r}
+ar2_rev <- rev(ar2)
+
+ar2_rev_df <- tibble(
+  time = 1:500,
+  value = as.numeric(ar2_rev)
+)
+
+ggplot(ar2_rev_df, aes(x = time, y = value)) +
+  geom_line() +
+  labs(x = "time", y = "value")
+```
+
 
 c.  Fit an AR(2) model to the reversed time series using `fable`. Hint: You may use the code snippet `model(AR(X ~ order(2)))`.
 
+```{r}
+rev_ts <- ar2_rev_df %>%
+  as_tsibble(index = time)
+
+fit_rev <- rev_ts %>%
+  model(AR(value ~ order(2)))
+```
+
+
 d.  Inspect the model parameters using `tidy()`. Why are they similar to the those in @eq-ar2?
 
+Inspect the estimated parameters using `tidy()`. The estimated coefficients are expected to be close to
+$$
+\phi_1 = 0.5, \qquad \phi_2 = -0.25,
+$$
+because a stationary Gaussian AR(2) process is reversible in distribution. Therefore, reversing time does not change the second-order dependence structure, and estimation recovers similar parameters up to sampling variation.
+```{r}
+tidy(fit_rev)
+```
+
 e.  Make a forecast with $h = 10$. What does this correspond to in terms of the original time series?
+
+```{r}
+fc_rev <- fit_rev %>%
+  forecast(h = 10)
+
+fc_rev
+autoplot(fc_rev, rev_ts)
+```
+
+The forecast indices are 501--510 for the reversed series. These correspond to $X_0, X_{-1}, \ldots, X_{-9}$ in the original series, i.e. backcasts before $X_1$.
+
+
+
+
+
+
 
 ## 4. Yule-Walker
 
