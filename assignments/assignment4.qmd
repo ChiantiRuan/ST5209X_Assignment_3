@@ -408,11 +408,7 @@ fit_rev <- rev_ts %>%
 
 d.  Inspect the model parameters using `tidy()`. Why are they similar to the those in @eq-ar2?
 
-Inspect the estimated parameters using `tidy()`. The estimated coefficients are expected to be close to
-$$
-\phi_1 = 0.5, \qquad \phi_2 = -0.25,
-$$
-because a stationary Gaussian AR(2) process is reversible in distribution. Therefore, reversing time does not change the second-order dependence structure, and estimation recovers similar parameters up to sampling variation.
+Because a stationary Gaussian AR(2) process is reversible in distribution. Therefore, reversing time does not change the second-order dependence structure, and estimation recovers similar parameters up to sampling variation.
 ```{r}
 tidy(fit_rev)
 ```
@@ -439,6 +435,38 @@ The forecast indices are 501--510 for the reversed series. These correspond to $
 
 a.  Write the Yule-Walker equations for the AR(2) model from Problem 1.
 
+For the AR(2) model
+$$
+X_t = 4 + 0.5X_{t-1} - 0.25X_{t-2} + W_t,
+$$
+write it in centered form:
+$$
+X_t - \mu = 0.5(X_{t-1}-\mu) - 0.25(X_{t-2}-\mu) + W_t,
+$$
+so
+$$
+\phi_1 = 0.5, \qquad \phi_2 = -0.25.
+$$
+
+The Yule–Walker equations for AR(2) are
+$$
+\begin{aligned}
+\gamma(1) &= \phi_1 \gamma(0) + \phi_2 \gamma(1), \\
+\gamma(2) &= \phi_1 \gamma(1) + \phi_2 \gamma(0), \\
+\gamma(0) &= \phi_1 \gamma(1) + \phi_2 \gamma(2) + \sigma^2.
+\end{aligned}
+$$
+
+Substitute values:
+$$
+\begin{aligned}
+\gamma(1) &= 0.5\gamma(0) - 0.25\gamma(1), \\
+\gamma(2) &= 0.5\gamma(1) - 0.25\gamma(0), \\
+\gamma(0) &= 0.5\gamma(1) - 0.25\gamma(2) + \sigma^2.
+\end{aligned}
+$$
+
+
 b.  Arrange the equations in the following matrix form (i.e. fill in the missing entries): $$
     \left[\begin{matrix}     ? & ? & ?  \\ ? & ? & ? \\
     ? & ? & ?
@@ -447,14 +475,172 @@ b.  Arrange the equations in the following matrix form (i.e. fill in the missing
     \end{matrix}\right].
     $$
 
+Rearrange each equation to move all terms to the left:
+
+(1): 
+$$
+\gamma(1) + 0.25\gamma(1) - 0.5\gamma(0) = 0
+\;\Rightarrow\;
+-0.5\gamma(0) + 1.25\gamma(1) + 0\cdot\gamma(2) = 0
+$$
+
+(2): 
+$$
+\gamma(2) - 0.5\gamma(1) + 0.25\gamma(0) = 0
+\;\Rightarrow\;
+0.25\gamma(0) - 0.5\gamma(1) + 1\gamma(2) = 0
+$$
+
+(3): 
+$$
+\gamma(0) - 0.5\gamma(1) + 0.25\gamma(2) = \sigma^2
+$$
+
+Write in matrix form:
+$$
+\begin{bmatrix}
+1 & -0.5 & 0.25 \\
+-0.5 & 1.25 & 0 \\
+0.25 & -0.5 & 1
+\end{bmatrix}
+\begin{bmatrix}
+\gamma(0) \\
+\gamma(1) \\
+\gamma(2)
+\end{bmatrix}
+=
+\begin{bmatrix}
+\sigma^2 \\
+0 \\
+0
+\end{bmatrix}.
+$$
+
+
 c.  Solve the system from part b) for $\gamma(0), \gamma(1), \gamma(2)$ numerically using `solve()`.
+```{r}
+sigma2 <- 1  # can scale later if needed
+
+A <- matrix(c(
+  1, -0.5, 0.25,
+ -0.5, 1.25, 0,
+  0.25, -0.5, 1
+), nrow = 3, byrow = TRUE)
+
+b <- c(sigma2, 0, 0)
+
+gamma <- solve(A, b)
+gamma
+```
+
 
 d.  Given $$
     \Gamma_2 = \left[\begin{matrix}     \gamma(0) & \gamma(1) \\ \gamma(1) & \gamma(0)
     \end{matrix}\right],
     $$ what is the top left entry of $\Gamma_2^{-1}$ in terms of $\gamma(0)$ and $\gamma(1)$?
 
+Given
+$$
+\Gamma_2 =
+\begin{bmatrix}
+\gamma(0) & \gamma(1) \\
+\gamma(1) & \gamma(0)
+\end{bmatrix},
+$$
+
+its determinant is
+$$
+\det(\Gamma_2) = \gamma(0)^2 - \gamma(1)^2.
+$$
+
+Hence
+$$
+\Gamma_2^{-1}
+=
+\frac{1}{\gamma(0)^2 - \gamma(1)^2}
+\begin{bmatrix}
+\gamma(0) & -\gamma(1) \\
+-\gamma(1) & \gamma(0)
+\end{bmatrix}.
+$$
+
+Therefore, the top-left entry is
+$$
+[\Gamma_2^{-1}]_{11}
+=
+\frac{\gamma(0)}{\gamma(0)^2 - \gamma(1)^2}.
+$$ 
+
+
 e.  Write a 95% confidence interval for $\phi_1$ using your answers for d) and 3d).
+
+From asymptotic theory for Yule–Walker estimator,
+$$
+\sqrt{n}(\hat{\phi}_1 - \phi_1)
+\overset{d}{\longrightarrow}
+N\left(0,\; \sigma^2 \cdot [\Gamma_2^{-1}]_{11}\right).
+$$
+
+Thus
+$$
+\hat{\phi}_1 \approx
+N\left(\phi_1,\; \frac{\sigma^2}{n} \cdot [\Gamma_2^{-1}]_{11}\right).
+$$
+
+Substitute part (d):
+$$
+\mathrm{Var}(\hat{\phi}_1)
+=
+\frac{\sigma^2}{n}
+\cdot
+\frac{\gamma(0)}{\gamma(0)^2 - \gamma(1)^2}.
+$$
+
+Hence the 95% confidence interval is
+$$
+\hat{\phi}_1
+\pm
+1.96
+\sqrt{
+\frac{\sigma^2}{n}
+\cdot
+\frac{\gamma(0)}{\gamma(0)^2 - \gamma(1)^2}
+}.
+$$
+
+```{r}
+phi_hat <- tidy(fit_rev)$estimate[2]   # use your fitted model
+n <- 500
+sigma2 <- 1
+
+A <- matrix(c(
+  1, -0.5, 0.25,
+ -0.5, 1.25, 0,
+  0.25, -0.5, 1
+), nrow = 3, byrow = TRUE)
+
+gamma <- solve(A, c(sigma2, 0, 0))
+gamma0 <- gamma[1]
+gamma1 <- gamma[2]
+
+Gamma2_inv_11 <- gamma0 / (gamma0^2 - gamma1^2)
+
+se_phi1 <- sqrt((sigma2 / n) * Gamma2_inv_11)
+
+z <- qnorm(0.975)
+
+CI_phi1 <- c(
+  phi_hat - z * se_phi1,
+  phi_hat + z * se_phi1
+)
+
+CI_phi1
+```
+
+
+
+
+
 
 ## 5. Recursive forecasting for ARMA(1, 1)
 
@@ -475,15 +661,50 @@ a.  Fill in the following code snippet using equation (12.14) to generate a sequ
 wn_hat <- rep(0, n)
 wn_hat[[1]] <- xt[[1]]
 for (i in 2:n) {
-  # FILL IN
+  wn_hat[i] <- xt[i] - 0.5 * xt[i-1] - 0.5 * wn_hat[i-1]
 }
 ```
 
+
 b.  Make a time plot of the log absolute difference between `wn` and `wn_hat`.
+```{r}
+log_diff <- log(abs(wn - wn_hat))
+
+plot(log_diff, type = "l",
+     main = "Log Absolute Difference between wn and wn_hat",
+     xlab = "t", ylab = "log|wn - wn_hat|", col = "blue")
+grid()
+```
+
 
 c.  What consequence does this have for truncated forecasts?
 
+The plot shows that the log absolute difference decreases approximately linearly, which implies that the error $|W_t - \hat{W}_t|$ decays exponentially fast. Since the MA polynomial $\theta(z) = 1 + 0.5z$ is invertible (its root lies outside the unit circle), the effect of the initial truncation (e.g. $\hat{W}_1 = X_1$) vanishes quickly.
+
+Therefore, for sufficiently large $t$, the truncated innovation $\hat{W}_t$ is a very good approximation to $W_t$,
+and truncated forecasts will be close to the optimal forecasts.
+
+
 d.  Compute the truncated forecast for $X_{53}$.
+```{r}
+## 1-step ahead forecast: X_51
+x51_hat <- 0.5 * xt[50] + 0.5 * wn_hat[50]
+
+## multi-step recursion:
+## for h >= 2, E(W_{t+h}) = 0 and past innovations vanish
+## so X_{t+h|t} = 0.5 * X_{t+h-1|t}
+
+x52_hat <- 0.5 * x51_hat
+x53_hat <- 0.5 * x52_hat
+
+x53_hat
+```
+Thus, the truncated forecast for $X_{53}$ is 0.1584 (to 4 d.p.). 
+
+
+
+
+
 
 ## 6. ACF, PACF, and BLPs
 
@@ -495,16 +716,146 @@ $$
 
 a.  Can $(X_t)$ be an MA(2) process? Explain why or why not.
 
+For an MA(q) process, the autocovariance function satisfies
+$$
+\gamma(h) = 0 \quad \text{for all } |h| > q.
+$$
+
+If $(X_t)$ were an MA(2) process, we must have
+$$
+\gamma(3) = 0, \quad \gamma(4) = 0.
+$$
+
+However, given
+$$
+\gamma(3) = 0.4 \neq 0, \quad \gamma(4) = 0.2 \neq 0,
+$$
+this condition is violated.
+
+Therefore, $(X_t)$ cannot be an MA(2) process.
+
+
 b.  Can $(X_t)$ be an AR(1) process? Explain why or why not.
+
+For an AR(1) process, the autocorrelation function satisfies
+$$
+\rho(h) = \phi^h.
+$$
+
+First compute
+$$
+\rho(1) = \frac{\gamma(1)}{\gamma(0)} = \frac{1.4}{2} = 0.7.
+$$
+
+If $(X_t)$ were AR(1), then
+$$
+\rho(2) = \rho(1)^2 = 0.7^2 = 0.49.
+$$
+
+But from the data,
+$$
+\rho(2) = \frac{\gamma(2)}{\gamma(0)} = \frac{0.6}{2} = 0.3.
+$$
+
+Since $0.3 \neq 0.49$, the AR(1) structure is violated.
+
+Therefore, $(X_t)$ is not an AR(1) process.
+
 
 c.  What is the best linear predictor $\hat X_4$ for $X_4$ given only $X_3 = 2$?
 
+For a mean-zero stationary process, the best linear predictor using one observation is
+$$
+\hat X_{t+h} = \rho(h) X_t.
+$$
+
+Here $t=3, h=1$:
+$$
+\rho(1) = \frac{1.4}{2} = 0.7.
+$$
+
+Thus
+$$
+\hat X_4 = \rho(1) X_3 = 0.7 \times 2 = 1.4.
+$$
+
+
 d.  Using the notation in part c), what is the variance of $X_4 - \hat X_4$?
+
+For one-step prediction,
+$$
+\mathrm{Var}(X_{t+1} - \hat X_{t+1}) = \gamma(0)\big(1 - \rho(1)^2\big).
+$$
+
+Compute:
+$$
+\mathrm{Var}(X_4 - \hat X_4)
+= 2(1 - 0.7^2)
+= 2(1 - 0.49)
+= 2(0.51)
+= 1.02.
+$$
+
 
 e.  What is the best linear predictor $\hat X_4$ for $X_4$ given only $X_2 = 2$?
 
+Here $t=2, h=2$:
+$$
+\rho(2) = \frac{0.6}{2} = 0.3.
+$$
+
+Thus
+$$
+\hat X_4 = \rho(2) X_2 = 0.3 \times 2 = 0.6.
+$$
+
+
 f.  Using the notation in part e), what is the variance of $X_4 - \hat X_4$?
+
+For $h$-step prediction using a single observation,
+$$
+\mathrm{Var}(X_{t+h} - \hat X_{t+h}) = \gamma(0)\big(1 - \rho(h)^2\big).
+$$
+
+Compute:
+$$
+\mathrm{Var}(X_4 - \hat X_4)
+= 2(1 - 0.3^2)
+= 2(1 - 0.09)
+= 2(0.91)
+= 1.82.
+$$
+
 
 g.  Let $\alpha_X$ denote the partial autocorrelation function of $(X_t)$. What is $\alpha_X(1)$?
 
+By definition of the partial autocorrelation function,
+$$
+\alpha_X(1) = \rho(1).
+$$
+
+Thus
+$$
+\alpha_X(1) = 0.7.
+$$
+
+
 h.  What is $\alpha_X(3)$?
+
+```{r}
+Gamma3 <- matrix(c(
+  2,   1.4, 0.6,
+  1.4, 2,   1.4,
+  0.6, 1.4, 2
+), nrow = 3, byrow = TRUE)
+
+gamma_vec <- c(1.4, 0.6, 0.4)
+
+phi3 <- solve(Gamma3, gamma_vec)
+
+alpha3 <- phi3[3]
+
+alpha3
+```
+
+Thus, $\alpha_X(3)$ is 0.3929 (to 4 d.p.). 
