@@ -22,6 +22,8 @@ execute:
 #| echo: FALSE
 library(tidyverse)
 library(fpp3)
+library(readr)
+library(tseries)
 ```
 
 ## 1. Modeling with ARIMA (Q9.7 in Hyndman & Athanasopoulos)
@@ -125,28 +127,118 @@ The forecasts exhibit a quadratic (accelerating) trend. This occurs because addi
 ## 2. Seasonal ARIMA
 
 a.  Load `diabetes.rds` from the directory `_data/cleaned`.
+```{r}
+df <- read_rds("../_data/cleaned/diabetes.rds")
+```
+
 
 b.  Perform the following transformation of the column `Cost`: Apply a log transform followed by a seasonal difference. Label the resulting time series `Y`.
+```{r}
+Y <- difference(log(df$Cost), 12)
+```
+
 
 c.  Apply the KPSS test to `Y`. What is its p-value? What can you conclude about `Y`?
+```{r}
+Y |> kpss.test()
+```
+The KPSS test gives a p-value of $0.1$.
+
+Since the null hypothesis of the KPSS test is stationarity, we do not reject the null hypothesis at conventional significance levels. Hence, there is no evidence that $Y$ is non-stationary, and we conclude that $Y$ is stationary.
+
 
 d.  Make a time plot of `log(Cost)`. Why does the trend disappear when we consider `Y`?
+```{r}
+logCost <- log(df$Cost)
+plot(logCost, type = "l", main = "Plot of log(Cost)")
+```
+The plot of $\log(\text{Cost})$ shows a clear upward linear trend together with strong seasonal fluctuations. The series $Y = \nabla_{12} \log(\text{Cost})$ applies a seasonal difference, which subtracts the value from the same season in the previous year. This removes both the repeating seasonal pattern and the underlying linear trend component.
+
+As a result, the persistent upward movement disappears, leaving a series that fluctuates around a constant mean, i.e. a stationary series.
+
 
 e.  Fit an ARIMA model to `log(Cost)` and report the order of the fitted model.
+```{r}
+df <- df |>
+  mutate(logCost = log(Cost))
+
+logC_fit <- df |>
+  select(logCost) |>
+  model(stepwise = ARIMA(logCost))
+
+report(logC_fit)
+```
+The fitted model is
+$$
+\text{ARIMA}(2,0,2)(1,1,1)_{12} \text{ with drift}.
+$$
+
 
 f.  How many fitted parameters are there in the model?
+
+The model includes the following parameters:
+
+- Non-seasonal AR terms: $2$
+- Non-seasonal MA terms: $2$
+- Seasonal AR term: $1$
+- Seasonal MA term: $1$
+- Drift (constant): $1$
+
+Hence, the total number of fitted parameters is
+$$
+2 + 2 + 1 + 1 + 1 = 7.
+$$
 
 ## 3. Model selection
 
 a.  What are the null hypothesis and assumptions of the ADF test?
 
+The null hypothesis of the ADF test is that the time series has a unit root, i.e. it is non-stationary. The test assumes that the data follow an AR$(p)$ process with independent and identically distributed errors.
+
+
 b.  Is it possible for both the ADF and KPSS test applied to a dataset to have large p-values? Explain why or why not.
+
+Yes. A large p-value in the ADF test means we fail to reject the null hypothesis of a unit root (non-stationarity). A large p-value in the KPSS test means we fail to reject the null hypothesis of stationarity. Since both tests are based on different null hypotheses, it is possible for both to have large p-values. This occurs when there is insufficient evidence to reject either hypothesis, so the data are inconclusive regarding stationarity.
+
 
 c.  What are the AIC and AICc penalties for the model fitted in Q2?
 
+From the fitted model in Q2, the information criteria are:
+
+$$
+\text{AIC} = -516.02, \qquad \text{AICc} = -515.24.
+$$
+
 d.  Fit an exponential smoothing model of your choice to `diabetes.rds`. Use `glance()` to view the log likelihood and AICc values of both this model and the ARIMA model from Q2.
 
+For the ETS model:
+```{r}
+logC_ets <- df |>
+  select(logCost) |>
+  model(ets = ETS(logCost))
+
+logC_ets |>
+  glance() |>
+  select(.model, log_lik, AICc)
+```
+
+For the ARIMA model:
+```{r}
+logC_fit |>
+  glance() |>
+  select(.model, log_lik, AICc)
+```
+
+Since the ARIMA model has a much lower AICc, it is strongly preferred over the ETS model.
+
+
 e.  Can we say which method is a better fit to the data by comparing their log likelihood or AICc? Explain why or why not.
+
+No. The log likelihood and AICc are not directly comparable across different model classes. ARIMA and ETS models are based on different underlying assumptions and likelihood formulations. Hence, we cannot determine which method is a better fit by comparing their log likelihood or AICc values.
+
+
+
+
 
 ## 4. Dynamic regression (adapted from Q10.4 in Hyndman & Athanasopoulos)
 
