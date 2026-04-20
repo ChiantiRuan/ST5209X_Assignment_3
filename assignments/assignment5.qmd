@@ -2,7 +2,7 @@
 title: "ST5209X Assignment 5"
 format: pdf
 editor: visual
-author: "Yanxin Ruan"
+author: "Yanxin Ruan (A0333643H)"
 execute:
   warning: false
 ---
@@ -245,16 +245,114 @@ No. The log likelihood and AICc are not directly comparable across different mod
 This exercise concerns `aus_accommodation`: the total quarterly takings from accommodation and the room occupancy level for hotels, motels, and guest houses in Australia, between January 1998 and June 2016. Total quarterly takings are in millions of Australian dollars.
 
 a.  Perform inflation adjustment for Takings (using the `CPI` column), creating a new column in the tsibble called `AdjTakings`.
+```{r}
+aus_accommodation <- aus_accommodation |>
+  mutate(AdjTakings = Takings / CPI)
+```
+
 
 b.  For each state, fit a dynamic regression model of `AdjTakings` with seasonal dummy variables, a piecewise linear time trend with one knot at 2008 Q1, and ARIMA errors.
+```{r}
+aus_accommodation_fit <- aus_accommodation |>
+  group_by(State) |>
+  mutate(
+    t = row_number(),
+    knot = pmax(t - match(yearquarter("2008 Q1"), Date) + 1, 0)
+  ) |>
+  model(
+    dynreg = ARIMA(AdjTakings ~ trend() + knot + season())
+  )
+```
+
 
 c.  What model was fitted for the state of Victoria? Does the time series exhibit constant seasonality?
+```{r}
+aus_accommodation_fit |>
+  filter(State == "Victoria") |>
+  report()
+```
+For Victoria, the fitted model is
+$$
+\text{LM w/ ARIMA}(1,0,0)(0,0,1)_{4} \text{ errors}.
+$$
+The seasonal effects are captured by seasonal dummy variables (season()), which implies constant seasonality over time. Hence, the time series exhibits constant seasonality.
+
 
 d.  Check that the residuals of the model in c) look like white noise.
+```{r}
+aus_accommodation_fit |>
+  filter(State == "Victoria") |>
+  gg_tsresiduals()
+```
+The residuals fluctuate around zero with no clear pattern. The ACF shows no significant autocorrelations, as all spikes lie within the confidence bounds. The histogram is approximately symmetric and centered at zero.
+
+Hence, the residuals resemble white noise, indicating that the model is adequate.
+
 
 e.  Use an ARIMA model to forecast CPI, then use these to forecast the (non-adjusted) takings for Victoria until the end of 2017. *Hint: You will have to use the `new_data` argument to `forecast()`.*
+```{r}
+# 1. Fit ARIMA model to CPI (Victoria)
+cpi_fit <- aus_accommodation |>
+  filter(State == "Victoria") |>
+  model(ARIMA(CPI))
+
+# 2. Create future data until end of 2017
+future_data <- aus_accommodation |>
+  filter(State == "Victoria") |>
+  new_data(n = 6)   # 6 quarters ahead
+
+# 3. Forecast CPI
+cpi_fc <- cpi_fit |>
+  forecast(new_data = future_data)
+
+# 4. Recreate regressors for new_data
+future_data <- future_data |>
+  mutate(
+    t = row_number() + nrow(filter(aus_accommodation, State == "Victoria")),
+    knot = pmax(t - match(yearquarter("2008 Q1"),
+                          filter(aus_accommodation, State == "Victoria")$Date) + 1, 0)
+  )
+
+# 5. Combine CPI forecast with regressors
+future_data <- future_data |>
+  mutate(CPI = cpi_fc$.mean)
+
+# 6. Forecast adjusted takings
+vic_model <- aus_accommodation_fit |>
+  filter(State == "Victoria")
+
+adj_fc <- vic_model |>
+  forecast(new_data = future_data)
+
+# 7. Convert back to original Takings
+takings_fc <- adj_fc |>
+  mutate(Takings = .mean * CPI)
+
+takings_fc
+
+takings_fc |>
+  autoplot(aus_accommodation |> filter(State == "Victoria"), level = NULL) +
+  labs(
+    title = "Forecasts of Takings for Victoria",
+    y = "Takings"
+  )
+```
+The forecasts for non-adjusted takings in Victoria show a generally increasing trend over time, rising from about $517.5$ in 2016 Q3 to around $582.2$ in 2017 Q4, with a temporary dip in 2017 Q2.
+
+The plot confirms that this pattern continues the historical upward trend and preserves the seasonal fluctuations. The short-term decrease is consistent with the seasonal pattern rather than a structural change.
+
+Hence, the forecasts indicate continued growth in nominal takings, driven by both the underlying trend and seasonality, as well as the increase in CPI.
+
 
 f.  What sources of uncertainty have not been taken into account in the prediction intervals?
+
+The prediction intervals do not account for the uncertainty in the forecasted CPI values. They also ignore the uncertainty in the estimated regression coefficients and model specification. In particular, the intervals are conditional on the assumed future regressors and the fitted model being correct. Hence, the reported prediction intervals underestimate the total uncertainty in the forecasts.
+
+
+
+
+
+
 
 ## 5. State space models
 
@@ -276,6 +374,150 @@ where $(\epsilon_t) \sim WN(0,\sigma_1^2)$, $\eta_t \sim WN(0,\sigma_2^2)$, and 
 
 a.  Write the model in the standard (matrix) form of a linear Gaussian state space model.
 
+Let the state vector be
+$$
+\alpha_t =
+\begin{pmatrix}
+T_t\\
+S_t\\
+S_{t-1}\\
+S_{t-2}\\
+S_{t-3}
+\end{pmatrix}.
+$$
+
+Then the observation equation is
+$$
+Y_t = Z \alpha_t + V_t,
+\qquad
+Z =
+\begin{pmatrix}
+1 & 1 & 0 & 0 & 0
+\end{pmatrix},
+\qquad
+V_t \sim N(0,\sigma_3^2).
+$$
+
+The state equation is
+$$
+\alpha_t = T \alpha_{t-1} + R w_t,
+$$
+where
+$$
+T =
+\begin{pmatrix}
+1 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0.8\\
+0 & 1 & 0 & 0 & 0\\
+0 & 0 & 1 & 0 & 0\\
+0 & 0 & 0 & 1 & 0
+\end{pmatrix},
+\qquad
+R =
+\begin{pmatrix}
+1 & 0\\
+0 & 1\\
+0 & 0\\
+0 & 0\\
+0 & 0
+\end{pmatrix},
+$$
+and
+$$
+w_t =
+\begin{pmatrix}
+\epsilon_t\\
+\eta_t
+\end{pmatrix},
+\qquad
+w_t \sim N\!\left(0,Q\right),
+\qquad
+Q =
+\begin{pmatrix}
+\sigma_1^2 & 0\\
+0 & \sigma_2^2
+\end{pmatrix}.
+$$
+
+Hence the model is a linear Gaussian state space model of the form
+$$
+\alpha_t = T\alpha_{t-1} + R w_t,
+\qquad
+Y_t = Z\alpha_t + V_t,
+$$
+with observation noise variance
+$$
+H = \sigma_3^2.
+$$
+
+
 b.  Does $\lim_{t \to \infty}\text{Var}(S_t - \hat S_{t|n})$ exist? If so, what is its value?
 
+Yes. Since
+$$
+S_t = 0.8S_{t-4} + \eta_t,
+\qquad \eta_t \sim WN(0,\sigma_2^2),
+$$
+the seasonal component is a stable seasonal AR process because $|0.8|<1$.
+
+For each season separately, define
+$$
+X_k^{(j)} = S_{4k+j}, \qquad j=0,1,2,3.
+$$
+Then each subsequence satisfies
+$$
+X_k^{(j)} = 0.8X_{k-1}^{(j)} + \eta_{4k+j},
+$$
+which is an AR$(1)$ process with stationary variance
+$$
+\mathrm{Var}(X_k^{(j)}) = \frac{\sigma_2^2}{1-0.8^2}.
+$$
+Hence
+$$
+\mathrm{Var}(S_t) = \frac{\sigma_2^2}{1-0.8^2}
+= \frac{\sigma_2^2}{0.36}
+= \frac{25}{9}\sigma_2^2.
+$$
+
+As the forecasting horizon increases, the effect of the observed data disappears, so the prediction error variance converges to the unconditional variance of $S_t$. Therefore,
+$$
+\lim_{t\to\infty}\mathrm{Var}(S_t-\hat S_{t\mid n})
+=
+\frac{\sigma_2^2}{1-0.8^2}
+=
+\frac{25}{9}\sigma_2^2.
+$$
+
+
 c.  Does $\lim_{t \to \infty}\text{Var}(T_t - \hat T_{t|n})$ exist? If so, what is its value?
+
+No. The trend component satisfies
+$$
+T_t = T_{t-1} + \epsilon_t,
+\qquad \epsilon_t \sim WN(0,\sigma_1^2),
+$$
+so $(T_t)$ is a random walk.
+
+Hence, for $t>n$,
+$$
+T_t = T_n + \sum_{j=n+1}^t \epsilon_j.
+$$
+Given the data $Y_1,\ldots,Y_n$, the future innovations $\epsilon_{n+1},\ldots,\epsilon_t$ are unpredictable, so
+$$
+T_t - \hat T_{t|n}
+= \sum_{j=n+1}^t \epsilon_j.
+$$
+Therefore,
+$$
+\mathrm{Var}(T_t - \hat T_{t|n})
+= \sum_{j=n+1}^t \mathrm{Var}(\epsilon_j)
+= (t-n)\sigma_1^2.
+$$
+
+As $t \to \infty$,
+$$
+\mathrm{Var}(T_t - \hat T_{t|n}) \to \infty.
+$$
+
+So the limit does not exist as a finite value.
+
